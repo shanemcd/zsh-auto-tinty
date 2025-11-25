@@ -2,7 +2,7 @@
 
 > Auto-sync Konsole’s color scheme with KDE’s light/dark mode using `tinty`.
 
-`zsh-kde-tinty` is a small Oh My Zsh–style plugin that watches KDE Plasma's theme changes over D-Bus and updates your Konsole color scheme via [`tinty`](https://github.com/gtramontina/tinty), **per tab**.
+`zsh-kde-tinty` is a small Oh My Zsh–style plugin that watches KDE Plasma's theme changes over D-Bus and updates your Konsole color scheme via [`tinty`](https://github.com/gtramontina/tinty) automatically.
 
 It is designed for:
 
