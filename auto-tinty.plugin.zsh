@@ -14,11 +14,6 @@ _tinty_theme_for_scheme() {
   [[ "$1" == "1" ]] && echo "$ZSH_TINTY_DARK" || echo "$ZSH_TINTY_LIGHT"
 }
 
-# Helper: extract pts number from tty path
-_tinty_pts_number() {
-  [[ "$1" =~ ^/?dev/pts/([0-9]+)$ ]] && echo "${match[1]}"
-}
-
 # Apply theme to all registered shells
 _tinty_apply_for_scheme() {
   local color_scheme=$1
@@ -39,7 +34,7 @@ _tinty_apply_for_scheme() {
       local pid=$(cat "$pts_file" 2>/dev/null)
 
       # Verify shell is running and terminal is writable
-      if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && [[ -w "$pts" && -c "$pts" ]]; then
+      if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && [[ -w "$pts" ]]; then
         printf '%s' "$tinty_output" > "$pts" 2>/dev/null
       else
         rm -f "$pts_file"  # Clean up stale registration
@@ -58,20 +53,8 @@ _tinty_get_current_scheme() {
     grep -oP 'uint32 \K\d+' | head -1
 }
 
-# Detect terminal device, trying multiple methods
+# Detect terminal device using ps (during zle-line-init, tty/fds aren't available yet)
 _tinty_get_tty() {
-  local tty_path=$(tty 2>/dev/null)
-
-  # If tty command works and returns a pts device, use it
-  [[ "$tty_path" =~ ^/dev/pts/[0-9]+$ ]] && echo "$tty_path" && return
-
-  # Fallback: check file descriptors
-  for fd in 0 1 2; do
-    tty_path=$(readlink /proc/self/fd/$fd 2>/dev/null)
-    [[ "$tty_path" =~ ^/dev/pts/[0-9]+$ ]] && echo "$tty_path" && return
-  done
-
-  # Final fallback: use ps to get controlling terminal
   local ctty=$(ps -p $$ -o tty= 2>/dev/null | tr -d ' ')
   [[ "$ctty" =~ ^pts/[0-9]+$ ]] && echo "/dev/$ctty"
 }
@@ -95,7 +78,8 @@ tinty_portal_zle_init() {
 
   # Detect and register this terminal
   local my_tty=$(_tinty_get_tty)
-  local my_pts_num=$(_tinty_pts_number "$my_tty")
+  local my_pts_num=""
+  [[ "$my_tty" =~ /dev/pts/([0-9]+)$ ]] && my_pts_num="${match[1]}"
 
   if [[ -n "$my_pts_num" ]]; then
     mkdir -p /tmp/tinty-shells
