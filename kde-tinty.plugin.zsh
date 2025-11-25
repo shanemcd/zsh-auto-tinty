@@ -1,7 +1,7 @@
 # KDE → tinty auto-sync plugin (ZLE-safe, debounced, race-free)
 
-# Only run in Konsole
-if [[ -z "$KONSOLE_VERSION" && "$TERM" != xterm-kde* ]]; then
+# Only run in interactive shells with a terminal
+if [[ ! -t 0 || -z "$TERM" || "$TERM" == "dumb" ]]; then
   return
 fi
 

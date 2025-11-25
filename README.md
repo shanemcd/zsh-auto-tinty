@@ -1,13 +1,13 @@
 # zsh-kde-tinty
 
-> Auto-sync Konsole’s color scheme with KDE’s light/dark mode using `tinty`.
+> Auto-sync your terminal's color scheme with KDE's light/dark mode using `tinty`.
 
-`zsh-kde-tinty` is a small Oh My Zsh–style plugin that watches KDE Plasma's theme changes over D-Bus and updates your Konsole color scheme via [`tinty`](https://github.com/gtramontina/tinty) automatically.
+`zsh-kde-tinty` is a small Oh My Zsh–style plugin that watches KDE Plasma's theme changes over D-Bus and updates your terminal color scheme via [`tinty`](https://github.com/gtramontina/tinty) automatically.
 
 It is designed for:
 
 - KDE Plasma (5/6)
-- Konsole
+- Any terminal that supports tinty (Konsole, Alacritty, kitty, etc.)
 - Oh My Zsh (or any Zsh plugin manager)
 - People who like auto light/dark switching and consistent terminal themes
 
@@ -15,20 +15,20 @@ It is designed for:
 
 ## Why this exists
 
-KDE Plasma can automatically switch between light and dark color schemes based on time of day or a schedule. Konsole has its own color schemes, and they don’t follow Plasma’s light/dark mode automatically.
+KDE Plasma can automatically switch between light and dark color schemes based on time of day or a schedule. Most terminals have their own color schemes that don't follow Plasma's light/dark mode automatically.
 
 This plugin:
 
-- Listens to KDE’s D-Bus signals (`colorsChanged`, `reloadConfig`)
+- Listens to KDE's D-Bus signals for config changes
 - Reads the active KDE color scheme via `kreadconfig6`
 - Maps it to a **light** or **dark** `tinty` theme
-- Applies the appropriate Konsole colorscheme with `tinty apply`
-- Runs inside each Konsole tab's Zsh session (required for tinty to work)
+- Applies the appropriate terminal colorscheme with `tinty apply`
+- Runs inside each terminal tab's Zsh session (required for tinty to work)
 - Uses ZLE-safe hooks, debouncing, and a simple lock to avoid race conditions
 
 You get:
 
-- Seamless KDE → Konsole theme syncing
+- Seamless KDE → terminal theme syncing
 - Clean background operation with proper cleanup
 
 ---
