@@ -9,7 +9,17 @@ fi
 # Safe initialization once ZLE is active & PATH is ready
 autoload -Uz add-zle-hook-widget
 
-# Apply theme based on color-scheme value (0=light, 1=dark, 2=light)
+# Helper: get theme name for color-scheme value (0=light, 1=dark, 2=light)
+_tinty_theme_for_scheme() {
+  [[ "$1" == "1" ]] && echo "$ZSH_TINTY_DARK" || echo "$ZSH_TINTY_LIGHT"
+}
+
+# Helper: extract pts number from tty path
+_tinty_pts_number() {
+  [[ "$1" =~ ^/?dev/pts/([0-9]+)$ ]] && echo "${match[1]}"
+}
+
+# Apply theme to all registered shells
 _tinty_apply_for_scheme() {
   local color_scheme=$1
 
@@ -17,31 +27,24 @@ _tinty_apply_for_scheme() {
     flock -n 9 || exit 0  # If another tab is applying, skip
 
     # Get tinty output once
-    local tinty_output
-    if [[ "$color_scheme" == "1" ]]; then
-      tinty_output=$($TINTY_BIN apply "$ZSH_TINTY_DARK" 2>/dev/null)
-    else
-      tinty_output=$($TINTY_BIN apply "$ZSH_TINTY_LIGHT" 2>/dev/null)
-    fi
+    local theme=$(_tinty_theme_for_scheme "$color_scheme")
+    local tinty_output=$($TINTY_BIN apply "$theme" 2>/dev/null)
 
-    # Apply only to registered shells (those that loaded this plugin)
-    if [[ -d /tmp/tinty-shells ]]; then
-      for pts_num in /tmp/tinty-shells/*; do
-        [[ -e "$pts_num" ]] || continue
-        local pts="/dev/pts/$(basename "$pts_num")"
+    # Broadcast to all registered shells
+    [[ -d /tmp/tinty-shells ]] || exit 0
+    for pts_file in /tmp/tinty-shells/*; do
+      [[ -e "$pts_file" ]] || continue
 
-        # Verify the shell is still running
-        local shell_pid=$(cat "$pts_num" 2>/dev/null)
-        if [[ -n "$shell_pid" ]] && kill -0 "$shell_pid" 2>/dev/null; then
-          if [[ -w "$pts" && -c "$pts" ]]; then
-            printf '%s' "$tinty_output" > "$pts" 2>/dev/null
-          fi
-        else
-          # Clean up stale registration
-          rm -f "$pts_num"
-        fi
-      done
-    fi
+      local pts="/dev/pts/$(basename "$pts_file")"
+      local pid=$(cat "$pts_file" 2>/dev/null)
+
+      # Verify shell is running and terminal is writable
+      if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null && [[ -w "$pts" && -c "$pts" ]]; then
+        printf '%s' "$tinty_output" > "$pts" 2>/dev/null
+      else
+        rm -f "$pts_file"  # Clean up stale registration
+      fi
+    done
   } 9>/tmp/tinty-portal.lock
 }
 
@@ -55,85 +58,73 @@ _tinty_get_current_scheme() {
     grep -oP 'uint32 \K\d+' | head -1
 }
 
+# Detect terminal device, trying multiple methods
+_tinty_get_tty() {
+  local tty_path=$(tty 2>/dev/null)
+
+  # If tty command works and returns a pts device, use it
+  [[ "$tty_path" =~ ^/dev/pts/[0-9]+$ ]] && echo "$tty_path" && return
+
+  # Fallback: check file descriptors
+  for fd in 0 1 2; do
+    tty_path=$(readlink /proc/self/fd/$fd 2>/dev/null)
+    [[ "$tty_path" =~ ^/dev/pts/[0-9]+$ ]] && echo "$tty_path" && return
+  done
+
+  # Final fallback: use ps to get controlling terminal
+  local ctty=$(ps -p $$ -o tty= 2>/dev/null | tr -d ' ')
+  [[ "$ctty" =~ ^pts/[0-9]+$ ]] && echo "/dev/$ctty"
+}
+
 tinty_portal_zle_init() {
   # Prevent duplicates - only run once per shell session
-  if [[ -n "$TINTY_PORTAL_WATCHER_RUNNING" ]]; then
-    return 0
-  fi
+  [[ -n "$TINTY_PORTAL_WATCHER_RUNNING" ]] && return 0
   export TINTY_PORTAL_WATCHER_RUNNING=1
 
-  # Remove the hook so it doesn't run again
   add-zle-hook-widget -d zle-line-init tinty_portal_zle_init
-
-  # Disable job control notifications for this function
   setopt LOCAL_OPTIONS NO_NOTIFY NO_MONITOR
 
-  # Resolve binaries AFTER PATH is ready and export for use in background jobs
+  # Resolve binaries and bail if missing
   export TINTY_BIN=$(command -v tinty)
   local DBUS_MONITOR=$(command -v dbus-monitor)
-
-  # If anything is missing, bail silently
   [[ -z "$TINTY_BIN" || -z "$DBUS_MONITOR" ]] && return 0
 
-  # User-overridable theme names (export for background jobs)
+  # User-overridable theme names
   export ZSH_TINTY_LIGHT="${ZSH_TINTY_LIGHT:-base16-ia-light}"
   export ZSH_TINTY_DARK="${ZSH_TINTY_DARK:-base16-ia-dark}"
 
-  # Register this shell's TTY so only plugin-aware terminals get theme updates
-  local my_tty=$(tty 2>/dev/null)
+  # Detect and register this terminal
+  local my_tty=$(_tinty_get_tty)
+  local my_pts_num=$(_tinty_pts_number "$my_tty")
 
-  # Try multiple fallbacks to find the actual pts device
-  if [[ ! "$my_tty" =~ ^/dev/pts/([0-9]+)$ ]]; then
-    # Try fd 0, 1, 2 in order
-    for fd in 0 1 2; do
-      my_tty=$(readlink /proc/self/fd/$fd 2>/dev/null)
-      [[ "$my_tty" =~ ^/dev/pts/([0-9]+)$ ]] && break
-    done
-  fi
-
-  # Final fallback: use ps to get the controlling terminal
-  if [[ ! "$my_tty" =~ ^/dev/pts/([0-9]+)$ ]]; then
-    local ctty=$(ps -p $$ -o tty= 2>/dev/null | tr -d ' ')
-    if [[ "$ctty" =~ ^pts/([0-9]+)$ ]]; then
-      my_tty="/dev/$ctty"
-    fi
-  fi
-
-  local my_pts_num=""
-  if [[ -n "$my_tty" && "$my_tty" =~ ^/dev/pts/([0-9]+)$ ]]; then
-    my_pts_num="${match[1]}"
+  if [[ -n "$my_pts_num" ]]; then
     mkdir -p /tmp/tinty-shells
     echo $$ > "/tmp/tinty-shells/$my_pts_num"
   fi
 
-  # Clean up registration on exit - but ONLY for the main shell, not subshells/background jobs
-  tinty_cleanup_registration() {
-    # Only clean up if this is the top-level shell (not a subshell or background job)
-    # $ZSH_SUBSHELL is 0 in the main shell, >0 in subshells
-    if [[ $ZSH_SUBSHELL -eq 0 && -n "$my_pts_num" ]]; then
-      rm -f "/tmp/tinty-shells/$my_pts_num"
+  # Combined cleanup on shell exit (only from main shell, not subshells)
+  _tinty_cleanup() {
+    if [[ $ZSH_SUBSHELL -eq 0 ]]; then
+      [[ -n "$my_pts_num" ]] && rm -f "/tmp/tinty-shells/$my_pts_num"
+      [[ -n "$TINTY_PORTAL_WATCHER_PID" ]] && kill "$TINTY_PORTAL_WATCHER_PID" 2>/dev/null
     fi
   }
-  add-zsh-hook zshexit tinty_cleanup_registration
+  add-zsh-hook zshexit _tinty_cleanup
 
-  # Initial application - apply directly to this terminal (not via broadcast)
+  # Apply initial theme directly to this terminal
   if [[ -n "$my_tty" ]]; then
-    local current_scheme=$(_tinty_get_current_scheme)
-    if [[ -n "$current_scheme" ]]; then
-      if [[ "$current_scheme" == "1" ]]; then
-        $TINTY_BIN apply "$ZSH_TINTY_DARK" > "$my_tty" 2>/dev/null
-      else
-        $TINTY_BIN apply "$ZSH_TINTY_LIGHT" > "$my_tty" 2>/dev/null
-      fi
+    local scheme=$(_tinty_get_current_scheme)
+    if [[ -n "$scheme" ]]; then
+      local theme=$(_tinty_theme_for_scheme "$scheme")
+      $TINTY_BIN apply "$theme" > "$my_tty" 2>/dev/null
     fi
   fi
 
-  # DBus watcher — monitors freedesktop portal for color-scheme changes
+  # DBus watcher — monitors portal for color-scheme changes
   {
     local last_applied=""
     "$DBUS_MONITOR" --session "type='signal',interface='org.freedesktop.portal.Settings',member='SettingChanged'" |
     while read -r line; do
-      # Look for org.freedesktop.appearance namespace
       if [[ "$line" == *"org.freedesktop.appearance"* ]]; then
         # Read next few lines to find color-scheme
         local check_next=5
@@ -141,14 +132,13 @@ tinty_portal_zle_init() {
           read -r line
           ((check_next--))
           if [[ "$line" == *"color-scheme"* ]]; then
-            # Wait 200ms for signals to settle, then poll actual value
-            sleep 0.2
-            local current_scheme=$(_tinty_get_current_scheme)
+            sleep 0.2  # Wait for signals to settle
+            local scheme=$(_tinty_get_current_scheme)
 
-            # Only apply if different from last applied (debounce duplicates)
-            if [[ -n "$current_scheme" && "$current_scheme" != "$last_applied" ]]; then
-              last_applied="$current_scheme"
-              _tinty_apply_for_scheme "$current_scheme" &!
+            # Only apply if different from last (debounce duplicates)
+            if [[ -n "$scheme" && "$scheme" != "$last_applied" ]]; then
+              last_applied="$scheme"
+              _tinty_apply_for_scheme "$scheme" &!
             fi
             break
           fi
@@ -159,15 +149,6 @@ tinty_portal_zle_init() {
 
   TINTY_PORTAL_WATCHER_PID=$!
   disown
-
-  # Clean up on shell exit
-  tinty_portal_cleanup() {
-    [[ -n "$TINTY_PORTAL_WATCHER_PID" ]] && kill "$TINTY_PORTAL_WATCHER_PID" 2>/dev/null
-  }
-
-  add-zsh-hook zshexit tinty_portal_cleanup
-
-  return 0
 }
 
 # Run watcher only after ZLE has fully initialized (cursor is set, prompt ready)
