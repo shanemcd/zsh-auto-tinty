@@ -37,13 +37,13 @@ You get:
 
 ## Features
 
-- 🌓 Automatic light/dark sync with KDE's theme  
-- 🎨 Konsole theming via `tinty` (Base16 or custom themes)  
-- 🧠 Per-tab watcher  
-- 🛡 ZLE-safe initialization  
-- 🔁 Debounced & locked tinty calls  
-- ⚙️ Customizable theme mapping  
-- 💼 Works with Oh My Zsh, Antigen, Zgenom, Znap, Sheldon, etc.
+- 🌓 Automatic light/dark sync with KDE's theme
+- 🎨 Konsole theming via `tinty` (Base16 or custom themes)
+- 🧠 Per-tab watcher
+- 🛡 ZLE-safe initialization
+- 🔁 Debounced & locked tinty calls
+- ⚙️ Customizable theme mapping
+- 💼 Tested with Oh My Zsh (should work with other Zsh plugin managers)
 
 ---
 
