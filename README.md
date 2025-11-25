@@ -2,7 +2,7 @@
 
 > Auto-sync Konsole’s color scheme with KDE’s light/dark mode using `tinty`.
 
-`zsh-kde-tinty` is a small Oh My Zsh–style plugin that watches KDE Plasma’s theme changes over D-Bus and updates your Konsole color scheme via [`tinty`](https://github.com/gtramontina/tinty), **per tab**, without breaking ZLE, fzf, or your prompt.
+`zsh-kde-tinty` is a small Oh My Zsh–style plugin that watches KDE Plasma's theme changes over D-Bus and updates your Konsole color scheme via [`tinty`](https://github.com/gtramontina/tinty), **per tab**, without breaking your prompt.
 
 It is designed for:
 
@@ -29,9 +29,7 @@ This plugin:
 You get:
 
 - Seamless KDE → Konsole theme syncing
-- No cursor glitches
-- No broken ZLE widgets
-- No runaway background jobs
+- Clean background operation with proper cleanup
 
 ---
 
@@ -130,37 +128,18 @@ Simple scheme-name detection; easy to extend.
 
 ## Troubleshooting
 
-### `os error 39: Directory not empty`
-Solved by plugin’s debounce + lock system.
+### Plugin doesn't seem to work
 
-### Missing commands
-Verify:
+Verify required commands are installed:
 
 ```bash
 command -v tinty
 command -v kreadconfig6
 command -v dbus-monitor
+command -v flock
 ```
 
-### Cursor disappears
-Ensure you're running the latest version with ZLE-safe initialization.
-
----
-
-## Repository Best Practices
-
-- README with install & config instructions
-- MIT license
-- Standard plugin filename: `kde-tinty.plugin.zsh`
-- GitHub-friendly structure:
-  ```
-  zsh-kde-tinty/
-    README.md
-    LICENSE
-    kde-tinty.plugin.zsh
-  ```
-- Optional: issue template, PR template, changelog
-- Tag versions (`v0.x.x`)
+Make sure you've configured your light/dark theme names in `~/.zshrc` before loading the plugin.
 
 ---
 
