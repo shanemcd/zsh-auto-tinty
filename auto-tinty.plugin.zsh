@@ -47,8 +47,14 @@ _tinty_get_current_scheme() {
 _tinty_apply_current_scheme() {
   local scheme=$(_tinty_get_current_scheme)
   local theme=$(_tinty_theme_for_scheme "$scheme")
-  _tinty_debug "APPLY: scheme=$scheme, theme=$theme"
-  $TINTY_BIN apply "$theme" 2>/dev/null
+  _tinty_debug "APPLY: scheme=$scheme, theme=$theme to tty=$TTY"
+
+  # Capture output and write to TTY to ensure it reaches the terminal
+  # (signal handlers may not have stdout connected properly)
+  local output=$($TINTY_BIN apply "$theme" 2>/dev/null)
+  if [[ -n "$output" && -w "$TTY" ]]; then
+    printf '%s' "$output" > "$TTY"
+  fi
 }
 
 # Signal handler: apply theme when notified
@@ -142,7 +148,8 @@ tinty_portal_zle_init() {
     if [[ "$OSTYPE" == darwin* ]]; then
       {
         _tinty_debug "WATCHER: macOS watcher starting"
-        local last_scheme=""
+        local last_scheme=$(_tinty_get_current_scheme)  # Initialize to current
+        _tinty_debug "WATCHER: initial scheme=$last_scheme"
         "$WATCHER_BIN" --include AppleInterfaceThemeChangedNotification 2>&1 |
         while read -r line; do
           _tinty_debug "WATCHER: received notification"
@@ -161,17 +168,20 @@ tinty_portal_zle_init() {
     else
       {
         _tinty_debug "WATCHER: Linux watcher starting"
-        local last_scheme=""
+        local last_scheme=$(_tinty_get_current_scheme)  # Initialize to current
+        _tinty_debug "WATCHER: initial scheme=$last_scheme"
         "$WATCHER_BIN" --session "type='signal',interface='org.freedesktop.portal.Settings',member='SettingChanged',arg0='org.freedesktop.appearance',arg1='color-scheme'" 2>&1 |
         while read -r line; do
           sleep 0.2  # Debounce
           local scheme=$(_tinty_get_current_scheme)
           if [[ -n "$scheme" && "$scheme" != "$last_scheme" ]]; then
             last_scheme="$scheme"
+            _tinty_debug "WATCHER: scheme changed to $scheme, signaling shells"
             _tinty_signal_all_shells
           fi
         done
         rmdir /tmp/tinty-watcher.lock 2>/dev/null
+        _tinty_debug "WATCHER: exited, released lock"
       } &
     fi
 
